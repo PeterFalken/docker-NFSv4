@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+
+FUNCTIONS_FILE='/usr/local/bin/nfs.lib'
+
+## Check for configuration files
+if [ -f $FUNCTIONS_FILE ]; then
+  . $FUNCTIONS_FILE
+else
+  echo "Missing functions library: '$FUNCTIONS_FILE'."
+  exit 1
+fi
+
+trap "stop; exit 0;" SIGTERM SIGINT
+
+stop() {
+  log "SIGTERM or SIGINT caught, terminating process(es)..."
+  echo 0 > /proc/fs/nfsd/threads & # Remove all threads
+  sleep 1
+  /usr/sbin/exportfs -ua && sleep 1 # Remove all exports -uav && sleep 1
+  /usr/sbin/exportfs -f &$ sleep 1 # Flush changes to /proc/fs/nfsd or /proc/fs/nfs
+  term_process rpc.mountd
+  term_process rpcbind
+  log "NFS service stopped."
+  log "Sent SIGKILL to all processes." && /bin/kill -s SIGKILL -1
+  exit
+}
+
+# Check for /etc/exports
+if [ ! -f /etc/exports ]; then
+  log "File '/etc/exports' not found." >&2
+  exit 1
+fi
+
+# Load NFS modules
+assert_kernel_mod nfsd
+
+# Starting rpcbind
+/sbin/rpcbind -w -d
+# Set & list exports
+/usr/sbin/exportfs -rv
+#Starting rpc.mount
+/usr/sbin/rpc.mountd -F &
+# Start NFS server
+/usr/sbin/rpc.nfsd &
+log "NFS service started."
+
+# Wait forever or until SIGTERM or SIGINT
+while :
+do
+  sleep 600 & wait
+done

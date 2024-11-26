@@ -1,0 +1,13 @@
+# IDEA project files
+.idea
+*.iml
+
+# VS Code files
+.vscode
+*.code-workspace
+
+# macOS
+.DS_Store
+
+# Build files
+target

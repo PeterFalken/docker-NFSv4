@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+
+## Logging
+log() {
+  echo "## $(date +'%Y.%m.%d %H:%M:%S') --> $1"
+}
+
+## Error handling
+bail() {
+  log "ERROR: $1"
+  exit 1
+}
+
+on_failure() {
+  if [[ $? -eq 0 ]]; then
+    return
+  fi
+
+  case "$1" in
+    warn)
+      log "WARNING: $2"
+      ;;
+    stop)
+      log "ERROR: $2"
+      stop
+      ;;
+    *)
+      bail "$2"
+      ;;
+  esac
+}
+
+
+## process control
+term_process() {
+  local -r base=$(basename "$1")
+  local -r pid=$(pidof "$base")
+
+  if [[ -n $pid ]]; then
+    log "terminating $base"
+    /bin/kill -s TERM "$pid"
+    # kill -TERM "$pid" > /dev/null 2>&1
+    on_failure warn "unable to terminate $base"
+  else
+    log "$base was not running"
+  fi
+}
+
+
+## Misc
+has_capability() {
+  if capsh --print | grep -Eq "^Current: .*,?${1}(,|$)"; then
+    return 0
+  fi
+
+  return 1
+}
+
+is_kernel_module_loaded() {
+  local -r module=$1
+  if lsmod | grep -Eq "^$module\\s+" || [[ -d "/sys/module/$module" ]]; then
+    log "kernel module $module is loaded"
+    return 0
+  fi
+
+  log "kernel module $module is missing"
+  return 1
+}
+
+assert_kernel_mod() {
+  local -r module=$1
+
+  if is_kernel_module_loaded "$module"; then
+    return
+  fi
+
+  if [[ ! -d /lib/modules ]] || ! has_capability 'sys_module'; then
+    bail "$module module is not loaded in the Docker host's kernel (try: modprobe $module)"
+  fi
+
+  log "attempting to load kernel module $module"
+  modprobe -v "$module"
+  on_failure bail "unable to dynamically load kernel module $module. try modprobe $module on the Docker host"
+
+  if ! is_kernel_module_loaded "$module"; then
+    bail "modprobe claims that it loaded kernel module $module, but it still appears to be missing"
+  fi
+}

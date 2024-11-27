@@ -1,11 +1,11 @@
 name: "CI: Tag & Build"
 
 on:
-  push: # On pushes of tags for 'main'
-    branches:
-      - 'main'
-    tags:
-      - 'v*'
+  # push: # On pushes of tags for 'main'
+  #   branches:
+  #     - 'main'
+  #   tags:
+  #     - 'v*'
   schedule: # At 03:30 on every 15th.
     - cron: "30 3 15 * *"
   workflow_dispatch: {} # Allow manual activation
@@ -14,11 +14,19 @@ jobs:
   Tag-n-Build:
     runs-on: ubuntu-latest
     steps:
-      # https://github.com/marketplace/actions/checkout
       - name: Git Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - id: tag
+        name: Git Semantic Version - tag
+        uses: PaulHatch/semantic-version@v5.4.0
+        with:
+          tag_prefix: "v"
+          bump_each_commit: true
+          major_pattern: "major: "
+          minor_pattern: "feat: "
 
       - id: meta
         name: Docker meta
@@ -26,24 +34,24 @@ jobs:
         with:
           images: ${{ github.repository }}
           tags: |
-            type=ref,event=tag,enabled={{is_default_branch}}
             type=ref,event=branch,suffix=-{{sha}}
             type=raw,value=build_{{date 'YYYY.MM.DD'}}
+            type=semver,pattern={{raw}},value=${{ steps.tag.outputs.version_tag }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      # - name: Set up Docker Buildx
+      #   uses: docker/setup-buildx-action@v3
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # - name: Login to Docker Hub
+      #   uses: docker/login-action@v3
+      #   with:
+      #     username: ${{ secrets.DOCKERHUB_USERNAME }}
+      #     password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push image
-        uses: docker/build-push-action@v6
-        env:
-          SOURCE_DATE_EPOCH: ${{ env.TIMESTAMP }}
-        with:
-          push: true
-          labels: ${{ steps.meta.outputs.labels }}
-          tags: ${{ steps.meta.outputs.tags }}
+      # - name: Build and push image
+      #   uses: docker/build-push-action@v6
+      #   env:
+      #     SOURCE_DATE_EPOCH: ${{ env.TIMESTAMP }}
+      #   with:
+      #     push: true
+      #     labels: ${{ steps.meta.outputs.labels }}
+      #     tags: ${{ steps.meta.outputs.tags }}
